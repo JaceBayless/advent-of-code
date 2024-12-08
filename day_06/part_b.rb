@@ -1,12 +1,12 @@
 class Character
-  attr_accessor :x, :y, :previous_positions
+  attr_accessor :x, :y
 
-  def initialize(x:, y:, dir:, map:, previous_positions: nil)
+  def initialize(x:, y:, dir:, map:)
     @x = x
     @y = y
     @dir = dir
     @map = map
-    @previous_positions = [{x: @x, y: @y, dir: @dir}]
+    @previous_positions = {}
   end
 
   def velocity
@@ -27,14 +27,15 @@ class Character
   end
 
   def move
+    @previous_positions[[@x, @y, @dir]] = true
     @map.update_character_at(x: @x, y: @y, char: "X")
     @x += velocity[:x]
     @y += velocity[:y]
     @map.update_character_at(x: @x, y: @y, char: @dir)
-    @previous_positions << {x: @x, y: @y, dir: @dir}
   end
 
   def rotate
+    @previous_positions[[@x, @y, @dir]] = true
     @dir = case @dir
     when "^" then ">"
     when ">" then "v"
@@ -45,20 +46,20 @@ class Character
   end
 
   def looped?
-    @previous_positions.count({x: @x, y: @y, dir: @dir}) > 1
+    !!@previous_positions[[@x, @y, @dir]]
   end
 end
 
 class Map
   attr_accessor :character
 
-  def initialize(map, character_previous_positions = nil)
+  def initialize(map)
     @map = map
 
     start_char = map.map(&:join).join.scan(/\^|>|v|</)[0]
     start_y = map.index { _1.include?(start_char) }
     start_x = map[start_y].index(start_char)
-    @character = Character.new(x: start_x, y: start_y, dir: start_char, map: self, previous_positions: character_previous_positions)
+    @character = Character.new(x: start_x, y: start_y, dir: start_char, map: self)
   end
 
   def character_at(x:, y:)
@@ -78,36 +79,39 @@ class Map
   end
 
   def could_loop?
-    new_map = Map.new(@map.dup.map(&:dup), @character.previous_positions.dup)
-    new_map.update_character_at(x: @character.x + @character.velocity[:x], y: @character.y + @character.velocity[:y], char: "#")
+    # Can't block a previous path
+    return false if character_at(x: @character.x + @character.velocity[:x], y: @character.y + @character.velocity[:y]) == "X"
+
+    new_map = Map.new(@map.dup.map(&:dup))
     looper = new_map.character
+    new_map.update_character_at(x: looper.x + looper.velocity[:x], y: looper.y + looper.velocity[:y], char: "#")
 
     until looper.at_the_end?
-      return true if looper.looped?
-
       if looper.can_move?
         looper.move
       else
         looper.rotate
       end
+
+      return [@character.x + @character.velocity[:x], @character.y + @character.velocity[:y]] if looper.looped?
     end
 
     false
   end
 
   def solve
-    loops = 0
+    loops = []
     until @character.at_the_end?
-      loops += 1 if could_loop?
-
       if @character.can_move?
+        loop = could_loop?
+        loops << loop if loop
         @character.move
       else
         @character.rotate
       end
     end
 
-    puts loops
+    puts loops.uniq.length
   end
 end
 
