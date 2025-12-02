@@ -3,9 +3,12 @@ require "listen"
 # Function to execute the file and benchmark its runtime
 def execute_with_benchmark(file_path)
   benchmark_file = "#{file_path}.benchmark"
+  script_dir = File.dirname(file_path)
 
   start_time = Time.now
-  result = `ruby #{file_path}`
+  result = Dir.chdir(script_dir) do
+    `ruby #{file_path}`
+  end
   end_time = Time.now
 
   runtime = end_time - start_time
