@@ -1,4 +1,5 @@
 require "listen"
+require "stringio"
 
 # Function to execute the file and benchmark its runtime
 def execute_with_benchmark(file_path)
@@ -7,7 +8,15 @@ def execute_with_benchmark(file_path)
 
   start_time = Time.now
   result = Dir.chdir(script_dir) do
-    `ruby #{file_path}`
+    capture_output = StringIO.new
+    original_stdout = $stdout
+    $stdout = capture_output
+    begin
+      load file_path
+    ensure
+      $stdout = original_stdout
+    end
+    capture_output.string
   end
   end_time = Time.now
 
