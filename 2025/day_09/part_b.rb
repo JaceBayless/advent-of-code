@@ -1,24 +1,14 @@
 class Map
   def initialize
-    @red_tiles = Set[]
-    @green_tiles = Set[]
+    @red_tiles = []
+    @edges = []
   end
 
   def add_red_tile(x:, y:)
     if @last_red_tile
-      prev_x = @last_red_tile[0]
-      prev_y = @last_red_tile[1]
+      prev_x, prev_y = @last_red_tile
 
-      x_range = ([x, prev_x].min + 1)..([x, prev_x].max - 1)
-      y_range = ([y, prev_y].min + 1)..([y, prev_y].max - 1)
-
-      x_range.each do |i|
-        @green_tiles << [i, y]
-      end
-
-      y_range.each do |i|
-        @green_tiles << [x, i]
-      end
+      @edges << [prev_x, prev_y, x, y]
     end
 
     @last_red_tile = [x, y]
@@ -26,64 +16,79 @@ class Map
   end
 
   def largest_green_area
-    tiles = @red_tiles.to_a.combination(2).sort_by do |red_tile_a, red_tile_b|
-      (red_tile_a[0] - red_tile_b[0] + 1).abs * (red_tile_a[1] - red_tile_b[1] + 1).abs
+    tiles = @red_tiles.combination(2).sort_by do |red_tile_a, red_tile_b|
+      ((red_tile_a[0] - red_tile_b[0]).abs + 1) * ((red_tile_a[1] - red_tile_b[1]).abs + 1)
     end.reverse
 
-    tiles.each do |red_tile_a, red_tile_b|
+    tiles.each_with_index do |(red_tile_a, red_tile_b), index|
       x_min, x_max = [red_tile_a[0], red_tile_b[0]].minmax
       y_min, y_max = [red_tile_a[1], red_tile_b[1]].minmax
 
       valid_rectangle = true
 
-      (x_min + 1...x_max).each do |x|
-        next unless valid_rectangle
-        valid_rectangle = false unless inside?(x: x, y: y_max)
-        valid_rectangle = false unless inside?(x: x, y: y_min)
+      (x_min..x_max).each do |x|
+        break unless valid_rectangle
+        valid_rectangle &&= inside?(x: x, y: y_max)
+        valid_rectangle &&= inside?(x: x, y: y_min)
       end
 
-      (y_min + 1...y_max).each do |y|
-        next unless valid_rectangle
-        valid_rectangle = false unless inside?(x: x_min, y: y)
-        valid_rectangle = false unless inside?(x: x_max, y: y)
+      (y_min..y_max).each do |y|
+        break unless valid_rectangle
+        valid_rectangle &&= inside?(x: x_min, y: y)
+        valid_rectangle &&= inside?(x: x_max, y: y)
       end
 
-      next puts "#{red_tile_a} #{red_tile_b} is not valid" unless valid_rectangle
+      # next puts "#{red_tile_a} #{red_tile_b} is not valid" unless valid_rectangle
+      next unless valid_rectangle
 
-      return (red_tile_a[0] - red_tile_b[0] + 1).abs * (red_tile_a[1] - red_tile_b[1] + 1).abs
+      return ((red_tile_a[0] - red_tile_b[0]).abs + 1) * ((red_tile_a[1] - red_tile_b[1]).abs + 1)
     end
 
     nil
   end
 
   def inside?(x:, y:)
-    @max_scanned_x ||= {}
-
-    @inside ||= {}
-    @inside[y] ||= {}
-    return @inside[y][x] if !@inside[y][x].nil?
-
-    boundaries = @max_scanned_x.dig(y, :boundaries) || 0
-    red_row = @max_scanned_x.dig(y, :red_row) || false
-    prev_x = @max_scanned_x.dig(y, :x) || 0
-
-    (prev_x + 1..x).each do |i|
-      if @red_tiles.include?([i, y])
-        red_row = !red_row
-        boundaries += 1 if red_row
-      elsif @green_tiles.include?([i, y])
-        boundaries += 1 if !red_row
+    @inside_cache ||= {}
+    @inside_cache[y] ||= {}
+    return @inside_cache[y][x] if !@inside_cache[y][x].nil?
+    @inside_cache[y][x] = begin
+      if on_vertical_edge?(x: x, y: y) || on_horizontal_edge?(x: x, y: y)
+        true
+      else
+        crossings = scanline_crossings(y)
+        boundaries = crossings.bsearch_index { _1 > x } || crossings.length
+        boundaries.odd?
       end
-      @inside[y][i] = boundaries.odd? || red_row
     end
+  end
 
-    @max_scanned_x[y] = {
-      x: x,
-      red_row: red_row,
-      boundaries: boundaries
-    }
+  def scanline_crossings(y)
+    @scanline_crossings ||= {}
+    @scanline_crossings[y] ||= begin
+      xs = []
 
-    @inside[y][x]
+      vertical_edges.each do |x, y_min, y_max|
+        xs << x if y >= y_min && y < y_max
+      end
+
+      xs.sort
+    end
+  end
+
+  def vertical_edges
+    @vertical_edges ||= @edges.select { |x1, y1, x2, y2| x1 == x2 }.map { |x, y1, _, y2| [x, [y1, y2].min, [y1, y2].max] }
+  end
+
+  def on_vertical_edge?(x:, y:)
+    scanline_crossings(y).include?(x)
+  end
+
+  def horizontal_edges
+    @horizontal_edges ||= @edges.select { |x1, y1, x2, y2| y1 == y2 }.map { |x1, y, x2, _| [y, [x1, x2].min, [x1, x2].max] }
+  end
+
+  def on_horizontal_edge?(x:, y:)
+    horizontal_edges.any? { |y1, x1, x2| y == y1 && x >= x1 && x <= x2 }
   end
 end
 
