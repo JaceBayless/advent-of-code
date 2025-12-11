@@ -1,6 +1,4 @@
 class Map
-  DIMENSION = 100000
-
   def initialize
     @red_tiles = Set[]
     @green_tiles = Set[]
@@ -33,52 +31,64 @@ class Map
     end.reverse
 
     tiles.each do |red_tile_a, red_tile_b|
-      y_points = [red_tile_a[1], red_tile_b[1]]
-      y_range = y_points.min..y_points.max
+      x_min, x_max = [red_tile_a[0], red_tile_b[0]].minmax
+      y_min, y_max = [red_tile_a[1], red_tile_b[1]].minmax
 
-      x_points = [red_tile_a[0], red_tile_b[0]]
-      x_range = x_points.min..x_points.max
+      valid_rectangle = true
 
-      valid = true
-      y_range.each do |y|
-        x_range.each do |x|
-          valid = false if !green_or_red_tile?(x: x, y: y)
-          break if !valid
-        end
-        break if !valid
+      (x_min + 1...x_max).each do |x|
+        next unless valid_rectangle
+        valid_rectangle = false unless inside?(x: x, y: y_max)
+        valid_rectangle = false unless inside?(x: x, y: y_min)
       end
 
-      return y_range.count * x_range.count if valid
+      (y_min + 1...y_max).each do |y|
+        next unless valid_rectangle
+        valid_rectangle = false unless inside?(x: x_min, y: y)
+        valid_rectangle = false unless inside?(x: x_max, y: y)
+      end
+
+      next puts "#{red_tile_a} #{red_tile_b} is not valid" unless valid_rectangle
+
+      return (red_tile_a[0] - red_tile_b[0] + 1).abs * (red_tile_a[1] - red_tile_b[1] + 1).abs
     end
+
+    nil
   end
 
-  private
+  def inside?(x:, y:)
+    @max_scanned_x ||= {}
 
-  def green_or_red_tile?(x:, y:)
-    @red_or_green_tiles ||= {}
-    return @red_or_green_tiles[[x, y]] if @red_or_green_tiles[[x, y]]
+    @inside ||= {}
+    @inside[y] ||= {}
+    return @inside[y][x] if !@inside[y][x].nil?
 
-    red_row = false
-    last_known = @red_or_green_tiles.keys.select { _1[1] == y }.max_by { _1[0] } || [0, y]
-    boundary_tiles = @red_or_green_tiles[last_known] ? 1 : 0
-    (((last_known[0] + 1) || 0)..x).each do |i|
+    boundaries = @max_scanned_x.dig(y, :boundaries) || 0
+    red_row = @max_scanned_x.dig(y, :red_row) || false
+    prev_x = @max_scanned_x.dig(y, :x) || 0
+
+    (prev_x + 1..x).each do |i|
       if @red_tiles.include?([i, y])
-        boundary_tiles += 1 if !red_row
-
         red_row = !red_row
-      elsif !red_row && @green_tiles.include?([i, y])
-        boundary_tiles += 1
+        boundaries += 1 if red_row
+      elsif @green_tiles.include?([i, y])
+        boundaries += 1 if !red_row
       end
-
-      @red_or_green_tiles[[i, y]] = boundary_tiles.odd?
+      @inside[y][i] = boundaries.odd? || red_row
     end
 
-    @red_or_green_tiles[[x, y]]
+    @max_scanned_x[y] = {
+      x: x,
+      red_row: red_row,
+      boundaries: boundaries
+    }
+
+    @inside[y][x]
   end
 end
 
 map = Map.new
-tiles = File.read("input_test.txt").split("\n").map { _1.split(",").map(&:to_i) }
+tiles = File.read("input.txt").split("\n").map { _1.split(",").map(&:to_i) }
 
 tiles.each do |x, y|
   map.add_red_tile(x: x, y: y)
